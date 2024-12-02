@@ -1,0 +1,175 @@
+---
+title: "Six Nations Predictions 2025!"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(dplyr)
+library(kableExtra)
+library(DT)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+```
+
+## Scoreboard!
+
+```{r, echo=FALSE}
+
+# Predictions and Results Data
+predictions_rob <- read.csv("https://docs.google.com/spreadsheets/d/1JnoS8S8CiAd_CELaMRFpR5z96ha6BSy3LI34ccBaX3Q/export?format=csv")
+
+predictions_alex <- data.frame(
+  Match = c("England vs France", "Ireland vs Italy", "Scotland vs Wales"),
+  PredictedWinner = c("France", "Ireland", "Scotland"),
+  PredictedMargin = c(5, 10, 15)
+)
+
+predictions_chris <- data.frame(
+  Match = c("England vs France", "Ireland vs Italy", "Scotland vs Wales"),
+  PredictedWinner = c("England", "Italy", "Wales"),
+  PredictedMargin = c(7, 20, 5)
+)
+
+results <- data.frame(
+  Match = c("England vs France", "Ireland vs Italy", "Scotland vs Wales"),
+  Date = c("31st Jan 14:00", "1st Feb 16:45", "2nd Feb 12:30"),
+  HomeScore = c(3, 9, 19),
+  HomeTeam = c("England", "Ireland", "Scotland"),
+  AwayTeam = c("France", "Italy", "Wales"),
+  AwayScore = c(5, 24, 56)
+)
+
+results <- results %>%
+  mutate(
+    Winner = case_when(
+      HomeScore > AwayScore ~ HomeTeam,
+      AwayScore > HomeScore ~ AwayTeam,
+      TRUE ~ "Draw"
+    ),
+    Margin = abs(HomeScore - AwayScore)
+  )
+
+# Scoring Function
+score_prediction <- function(predicted_winner, predicted_margin, actual_winner, actual_margin) {
+  if (predicted_winner == actual_winner) {
+    diff <- abs(predicted_margin - actual_margin)
+    if (diff == 0) return(5)
+    if (diff <= 3) return(3)
+    if (diff <= 7) return(2)
+    return(1)
+  } else {
+    return(0)
+  }
+}
+
+# Calculate Scores with Dynamic Winner
+player_scores <- bind_rows(
+  predictions_rob %>%
+    left_join(results, by = "Match") %>%
+    mutate(Player = "Rob", Points = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin)),
+  predictions_alex %>%
+    left_join(results, by = "Match") %>%
+    mutate(Player = "Alex", Points = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin)),
+  predictions_chris %>%
+    left_join(results, by = "Match") %>%
+    mutate(Player = "Chris", Points = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin))
+) %>%
+  group_by(Player) %>%
+  summarise(TotalPoints = sum(Points)) %>%
+  arrange(desc(TotalPoints)) %>%
+  mutate(
+    Rank = case_when(
+      row_number() == 1 ~ "1st",
+      row_number() == 2 ~ "2nd",
+      row_number() == 3 ~ "3rd",
+      TRUE ~ paste0(row_number(), "th")
+    )
+  ) %>%
+  select(Rank, everything())
+
+# Display Scores Table
+kable(player_scores, align = c("l", "l", "r")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Fixtures
+
+```{r, echo=FALSE}
+
+# Match Results Table
+kable(results[,2:6], align = c("l", "r", "r", "l", "l")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Predictions
+
+```{r, echo=FALSE}
+library(shiny)
+library(DT)
+
+# Add scores to each player's predictions
+predictions_rob <- predictions_rob %>%
+  left_join(results, by = "Match") %>%
+  mutate(Score = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin)) %>%
+  select(Match, PredictedWinner, PredictedMargin, Score)
+
+predictions_alex <- predictions_alex %>%
+  left_join(results, by = "Match") %>%
+  mutate(Score = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin)) %>%
+  select(Match, PredictedWinner, PredictedMargin, Score)
+
+predictions_chris <- predictions_chris %>%
+  left_join(results, by = "Match") %>%
+  mutate(Score = mapply(score_prediction, PredictedWinner, PredictedMargin, Winner, Margin)) %>%
+  select(Match, PredictedWinner, PredictedMargin, Score)
+
+# Shiny UI
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Rob's Predictions",
+             DTOutput("rob_table")
+    ),
+    tabPanel("Alex's Predictions",
+             DTOutput("alex_table")
+    ),
+    tabPanel("Chris's Predictions",
+             DTOutput("chris_table")
+    )
+  )
+)
+
+# Shiny Server
+server <- function(input, output) {
+  output$rob_table <- renderDT({
+    datatable(predictions_rob, options = list(dom = 't', paging = FALSE))
+  })
+  output$alex_table <- renderDT({
+    datatable(predictions_alex, options = list(dom = 't', paging = FALSE))
+  })
+  output$chris_table <- renderDT({
+    datatable(predictions_chris, options = list(dom = 't', paging = FALSE))
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+
+## Standings Table
+
+```{r, echo=FALSE}
+# Mock Standings Data
+standings <- data.frame(
+  Team = c("England", "France", "Ireland", "Italy", "Scotland", "Wales"),
+  Played = c(1, 1, 1, 1, 1, 1),
+  Wins = c(1, 0, 1, 0, 1, 0),
+  Draws = c(0, 0, 0, 0, 0, 0),
+  Losses = c(0, 1, 0, 1, 0, 1),
+  PointsFor = c(14, 11, 45, 5, 19, 0),
+  PointsAgainst = c(11, 14, 5, 45, 0, 19)
+)
+
+# Display Standings
+kable(standings) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
